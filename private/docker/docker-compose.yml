@@ -1,0 +1,17 @@
+name: guzanda
+
+services:
+  guzanda:
+    build:
+      context: ../..
+      dockerfile: private/docker/Dockerfile
+    container_name: guzanda
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../guzanda.db:/app/private/guzanda.db
+      - ../uploads:/app/private/uploads
+
+    environment:
+      - TZ=Europe/Madrid

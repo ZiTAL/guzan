@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="eu">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Guzan | Guzanda Form</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="shell hero__content">
+      <p class="tag">BERMEO · HERRI PLATAFORMA</p>
+      <h1>GUZANDA</h1>
+    </div>
+  </header>
+
+  <main>
+    <section class="shell section">
+      <div class="section__head">
+        <h2>Guzanda Formularioa</h2>
+      </div>
+      <div class="shell">
+        <form id="guzandaForm" action="/guzanda" method="post" enctype="multipart/form-data">
+          <div style="margin-bottom: 1rem;">
+            <label for="name" class="form-label">Izena y Abizenak:</label>
+            <input type="text" id="name" name="name" required placeholder="Izena y Abizenak" class="form-input">
+          </div>
+          <div style="margin-bottom: 1rem;">
+            <label for="contact" class="form-label">Telefonoa edo posta elektronikoa:</label>
+            <input type="text" id="contact" name="contact" required placeholder="Telefonoa edo posta" class="form-input">
+          </div>
+          <div style="margin-bottom: 1rem;">
+            <label for="description" class="form-label">Deskribapena (testua):</label>
+            <textarea id="description" name="description" rows="4" placeholder="Deskribapena hemen idatzi..." class="form-input"></textarea>
+          </div>
+          <div style="margin-bottom: 1rem;">
+            <label for="audio" class="form-label">Audio sartu mikrofonokina (alternatiba):</label>
+            <div id="audioRecorder">
+              <button type="button" id="recordBtn" class="cta">Eragikortu / Start Recording</button>
+              <button type="button" id="stopBtn" class="cta" disabled>Itxi / Stop Recording</button>
+              <div id="audioStatus" style="margin-top: 0.5rem; font-size: 0.9rem; color: var(--muted);"></div>
+              <input type="hidden" name="audio" id="audioInput">
+            </div>
+            <p style="font-size: 0.9rem; color: var(--muted);">Nota: Testua edo audio bat sartu dezakezu, beharrezkoa ez da bi bat sartu.</p>
+          </div>
+          <button type="submit" class="cta">Submit / Bidali</button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="shell footer__inner">
+      <p>GUZAN · Bermeo</p>
+      <p>Alkarregaz</p>
+    </div>
+  </footer>
+
+  <script>
+    const form = document.getElementById('guzandaForm');
+    const recordBtn = document.getElementById('recordBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const audioStatus = document.getElementById('audioStatus');
+    const audioInput = document.getElementById('audioInput');
+
+    let mediaRecorder;
+    let audioChunks = [];
+
+    const STORAGE_KEY = 'guzandaFormData';
+
+    // Persist name, contact and description values as the user types
+    const saveToStorage = () => {
+      const data = {
+        name: document.getElementById('name').value,
+        contact: document.getElementById('contact').value,
+        description: document.getElementById('description').value
+      };
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      } catch (err) {
+        // localStorage may be unavailable (private mode, storage full); ignore
+      }
+    };
+
+    // Restore saved values on page load (only name and contact)
+    const restoreFromStorage = () => {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        if (!saved || typeof saved !== 'object') return;
+        if (saved.name) document.getElementById('name').value = saved.name;
+        if (saved.contact) document.getElementById('contact').value = saved.contact;
+      } catch (err) {
+        // ignore malformed storage data
+      }
+    };
+
+    for (const field of ['name', 'contact', 'description']) {
+      document.getElementById(field).addEventListener('input', saveToStorage);
+    }
+    restoreFromStorage();
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const formData = new FormData(form);
+      
+      // If we have recorded audio, add it to form data
+      if (audioChunks.length > 0) {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const audioFile = new File([audioBlob], `recording_${Date.now()}.webm`, { type: 'audio/webm' });
+        formData.set('audio', audioFile);
+      }
+
+      try {
+        const response = await fetch('/guzanda', {
+          method: 'POST',
+          body: formData
+        });
+
+        // Save form data to localStorage for later use
+        saveToStorage();
+
+        if (response.ok) {
+          const html = await response.text();
+          document.open();
+          document.write(html);
+          document.close();
+        } else {
+          const errorText = await response.text();
+          audioStatus.textContent = `Errorea: ${errorText}`;
+          audioStatus.style.color = 'red';
+        }
+      } catch (error) {
+        audioStatus.textContent = `Errorea: ${error.message}`;
+        audioStatus.style.color = 'red';
+      }
+    });
+
+    recordBtn.addEventListener('click', async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        
+        audioChunks = [];
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunks.push(event.data);
+          }
+        };
+        
+        mediaRecorder.onstop = () => {
+          // Clean up
+          stream.getTracks().forEach(track => track.stop());
+        };
+
+        mediaRecorder.start();
+        recordBtn.disabled = true;
+        stopBtn.disabled = false;
+        audioStatus.textContent = 'Eragikortzando... / Recording...';
+        audioStatus.style.color = 'var(--accent)';
+      } catch (err) {
+        audioStatus.textContent = `Errorea mikrofonokian atzitzean: ${err.message}`;
+        audioStatus.style.color = 'red';
+      }
+    });
+
+    stopBtn.addEventListener('click', () => {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        recordBtn.disabled = false;
+        stopBtn.disabled = true;
+        audioStatus.textContent = 'Eragikorrena itxi da. Forma bidali ahal duzu. / Recording stopped. You can now submit the form.';
+        audioStatus.style.color = 'var(--sea)';
+      }
+    });
+  </script>
+</body>
+</html>

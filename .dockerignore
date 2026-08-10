@@ -1,0 +1,10 @@
+private/node_modules
+private/guzanda.db
+private/uploads
+private/docker
+.git
+README.md
+DOCUMENTATION.md
+TODO.md
+AGENTS.md
+*.swp

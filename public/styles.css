@@ -274,3 +274,10 @@ h1 {
     padding: 0.7rem 0;
   }
 }
+
+.form-input {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}

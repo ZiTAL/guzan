@@ -1,0 +1,1 @@
+- RESOLVED: localStorage restore now fills only `name` and `contact`; the `description` field is no longer auto-filled on page load.    

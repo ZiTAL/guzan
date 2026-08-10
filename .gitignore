@@ -1,0 +1,11 @@
+node_modules/
+private/node_modules/
+
+# Database
+private/guzanda.db
+
+# Uploads
+private/uploads/
+
+# Swap / temp
+*.swp
