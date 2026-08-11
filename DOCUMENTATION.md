@@ -64,7 +64,7 @@ The Guzanda form (`guzanda.html`) provides:
    - User receives success confirmation with navigation links
 4. The moderator opens the review link:
    - The review page shows name, contact, description, and an audio player
-   - Clicking "Onartu / Approve" sets `approved = 1` in the database
+   - Clicking "Onartu" sets `approved = 1` in the database
    - The audio file is only reachable through the authenticated review page (via `/review/<token>/audio`)
 
 ## Privacy Considerations

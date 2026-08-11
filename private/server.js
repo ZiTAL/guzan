@@ -163,25 +163,25 @@ function sendSubmissionEmail(submission, reviewUrl) {
   const html = `
     <h2>Guzanda - Bidalketa berria</h2>
     <ul>
-      <li><strong>Izena / Name:</strong> ${escapeHtml(submission.name)}</li>
-      <li><strong>Kontaktua / Contact:</strong> ${escapeHtml(submission.contact)}</li>
-      <li><strong>Deskribapena / Description:</strong><br>${escapeHtml(description)}</li>
+      <li><strong>Izen Abizenak:</strong> ${escapeHtml(submission.name)}</li>
+      <li><strong>Kontaktua:</strong> ${escapeHtml(submission.contact)}</li>
+      <li><strong>Deskribapena:</strong><br>${escapeHtml(description)}</li>
       ${submission.audio ? '<li><strong>Audio:</strong> egiaztatu orrian</li>' : ''}
     </ul>
     <p>Ikusi eta onartzeko: <a href="${reviewUrl}">${reviewUrl}</a></p>
   `;
   const text = [
-    `Guzanda - Bidalketa berria / New submission #${submission.id}`,
-    `Izena / Name: ${submission.name}`,
-    `Kontaktua / Contact: ${submission.contact}`,
-    `Deskribapena / Description: ${description}`,
+    `Guzanda - Bidalketa berria #${submission.id}`,
+    `Izen Abizenak: ${submission.name}`,
+    `Kontaktua: ${submission.contact}`,
+    `Deskribapena: ${description}`,
     submission.audio ? 'Audioa: errepaso orrian entzun daiteke' : '',
     `Errepasatu / Review: ${reviewUrl}`
   ].filter(Boolean).join('\n');
   getTransporter().sendMail({
     from: config.smtp.user,
     to: config.mailTo,
-    subject: `[Guzanda] Bidalketa berria / New submission #${submission.id} - ${submission.name}`,
+    subject: `[Guzanda] Bidalketa berria #${submission.id} - ${submission.name}`,
     text,
     html
   }).then(() => {
@@ -265,14 +265,14 @@ app.get('/review/:token', (req, res) => {
     const audioSrc = row.audio ? `/review/${req.params.token}/audio` : null;
     const audioTag = audioSrc
       ? `<audio controls src="${audioSrc}"></audio>`
-      : '<p>Audio ez da grabatu / No audio recorded</p>';
+      : '<p>Audioa ez da grabatu</p>';
     const statusBadge = row.approved
       ? '<span class="badge approved">Onartua / Approved</span>'
-      : '<span class="badge pending">Erabakitzeke / Pending</span>';
+      : '<span class="badge pending">Erabakitzeke</span>';
     const approveForm = row.approved
       ? ''
       : `<form method="post" action="/review/${req.params.token}/approve">
-           <button type="submit" class="cta">Onartu / Approve</button>
+           <button type="submit" class="cta">Onartu</button>
          </form>`;
     html = html
       .split('{{id}}').join(row.id)
