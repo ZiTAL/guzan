@@ -12,6 +12,7 @@ services:
     volumes:
       - ../guzanda.db:/app/private/guzanda.db
       - ../uploads:/app/private/uploads
+      - ../../public:/app/public
 
     environment:
       - TZ=Europe/Madrid

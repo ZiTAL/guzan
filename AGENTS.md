@@ -1,5 +1,5 @@
 # GUZAN
 
 1. read DOCUMENTATION.md
-1. read TODO.md and start building
+1. read TODO.md and start doing tasks
 

@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
 const multer = require('multer');
+const crypto = require('crypto');
 const app = express();
 const port = 3000;
 
@@ -78,18 +79,65 @@ db.all(`PRAGMA table_info(guzanda)`, (err, rows) => {
   }
 });
 
+// CSRF protection: tokens are issued on GET, stored in an in-memory store,
+// delivered via cookie + a hidden field, and validated on POST.
+const csrfTokens = new Map();
+const CSRF_TTL_MS = 2 * 60 * 60 * 1000;
+
+function issueCsrfToken() {
+  const token = crypto.randomBytes(32).toString('hex');
+  const now = Date.now();
+  for (const [key, expires] of csrfTokens) {
+    if (now > expires) csrfTokens.delete(key);
+  }
+  csrfTokens.set(token, now + CSRF_TTL_MS);
+  return token;
+}
+
+function isValidCsrfToken(token) {
+  if (!token || !csrfTokens.has(token)) return false;
+  csrfTokens.delete(token);
+  return true;
+}
+
+function extractCookie(req, name) {
+  const header = req.headers['cookie'] || '';
+  for (const part of header.split(';')) {
+    const idx = part.indexOf('=');
+    if (idx === -1) continue;
+    const key = part.slice(0, idx).trim();
+    const value = part.slice(idx + 1).trim();
+    if (key === name) return decodeURIComponent(value);
+  }
+  return null;
+}
+
 // Routes
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '../public', 'index.html'));
 });
 
 app.get('/guzanda', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public', 'guzanda.html'));
+  const token = issueCsrfToken();
+  let html = fs.readFileSync(path.join(__dirname, '../public', 'guzanda.html'), 'utf8');
+  html = html.replace(
+    '</form>',
+    `<input type="hidden" name="csrf_token" value="${token}">\n        </form>`
+  );
+  res.setHeader('Set-Cookie', `csrf_token=${token}; Path=/; HttpOnly; SameSite=Lax`);
+  res.send(html);
 });
 
 app.post('/guzanda', upload.single('audio'), (req, res) => {
   const { name, contact, description } = req.body;
   const audio = req.file ? fs.realpathSync(path.join(uploadDir, req.file.filename)) : null;
+
+  // CSRF validation
+  const formToken = req.body && req.body.csrf_token;
+  const cookieToken = extractCookie(req, 'csrf_token');
+  if (!formToken || formToken !== cookieToken || !isValidCsrfToken(formToken)) {
+    return res.status(403).send('Invalid or missing CSRF token. Please refresh the form and try again.');
+  }
 
   // Basic validation
   if (!name || !contact) {
@@ -102,11 +150,9 @@ app.post('/guzanda', upload.single('audio'), (req, res) => {
     if (err) {
       return res.status(500).send(err.message);
     }
-    res.send(`
-      <h1>Submission Successful!</h1>
-      <p>Thank you, ${name}. Your submission has been received.</p>
-      <a href="/guzanda">Submit another</a> | <a href="/">Return to home</a>
-    `);
+    let html = fs.readFileSync(path.join(__dirname, '../public', 'guzanda-success.html'), 'utf8');
+    html = html.split('{{name}}').join(name);
+    res.send(html);
   });
 });
 

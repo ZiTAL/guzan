@@ -281,3 +281,131 @@ h1 {
   border: 1px solid var(--line);
   border-radius: 4px;
 }
+
+.tabs {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.tab {
+  padding: 0.6rem 1.1rem;
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 10px 10px 0 0;
+  background: #fff;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  margin: 0;
+}
+
+.tab:hover {
+  background: var(--sand);
+}
+
+.tab.active {
+  background: var(--sea);
+  border-color: var(--sea-deep);
+  color: #fff;
+}
+
+.tab-panel {
+  display: none;
+  margin-bottom: 1rem;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+.success-card {
+  max-width: 600px;
+}
+
+.success-title {
+  color: var(--sea-deep);
+}
+
+.success__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.success__actions a.cta {
+  color: #fff;
+}
+
+.cta--ghost {
+  background: #fff;
+  color: var(--sea);
+  border: 2px solid var(--sea);
+}
+
+.cta--ghost:hover {
+  background: var(--sea);
+  color: #fff;
+}
+
+.waveform {
+  display: none;
+  align-items: center;
+  gap: 3px;
+  height: 2rem;
+  margin-top: 1rem;
+}
+
+.waveform.recording {
+  display: flex;
+}
+
+.waveform span {
+  width: 4px;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  animation: waveform-bounce 0.9s ease-in-out infinite;
+}
+
+.waveform span:nth-child(2n) {
+  animation-delay: 0.15s;
+}
+
+.waveform span:nth-child(3n) {
+  animation-delay: 0.3s;
+}
+
+.waveform span:nth-child(4n) {
+  animation-delay: 0.45s;
+}
+
+@keyframes waveform-bounce {
+  0%, 100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.audio-actions {
+  margin-top: 0.75rem;
+}
+
+.audio-actions .cta {
+  margin-top: 0.5rem;
+}
+
+.audio-actions .cta--ghost {
+  margin-left: 0.5rem;
+}
+
+.audio-ready {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--sea-deep);
+}

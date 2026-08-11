@@ -29,21 +29,35 @@
             <label for="contact" class="form-label">Telefonoa edo posta elektronikoa:</label>
             <input type="text" id="contact" name="contact" required placeholder="Telefonoa edo posta" class="form-input">
           </div>
-          <div style="margin-bottom: 1rem;">
+          <div class="tabs" role="tablist">
+            <button type="button" class="tab active" id="tab-text" role="tab" aria-selected="true" aria-controls="panel-text" data-tab="text">Deskribapena</button>
+            <button type="button" class="tab" id="tab-audio" role="tab" aria-selected="false" aria-controls="panel-audio" data-tab="audio">Audio</button>
+          </div>
+
+          <div class="tab-panel active" id="panel-text" data-panel="text">
             <label for="description" class="form-label">Deskribapena (testua):</label>
             <textarea id="description" name="description" rows="4" placeholder="Deskribapena hemen idatzi..." class="form-input"></textarea>
           </div>
-          <div style="margin-bottom: 1rem;">
-            <label for="audio" class="form-label">Audio sartu mikrofonokina (alternatiba):</label>
+
+          <div class="tab-panel" id="panel-audio" data-panel="audio">
             <div id="audioRecorder">
-              <button type="button" id="recordBtn" class="cta">Eragikortu / Start Recording</button>
-              <button type="button" id="stopBtn" class="cta" disabled>Itxi / Stop Recording</button>
+              <button type="button" id="recordBtn" class="cta" aria-pressed="false">Start Recording</button>
+              <div class="waveform" id="waveform" aria-hidden="true">
+                <span></span><span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span><span></span>
+              </div>
               <div id="audioStatus" style="margin-top: 0.5rem; font-size: 0.9rem; color: var(--muted);"></div>
+              <div class="audio-actions" id="audioActions" hidden>
+                <p class="audio-ready">✔ Audio gordeta dago / Audio saved</p>
+                <button type="button" id="removeAudioBtn" class="cta cta--ghost">Ezabatu / Remove &amp; Record Another</button>
+              </div>
               <input type="hidden" name="audio" id="audioInput">
             </div>
-            <p style="font-size: 0.9rem; color: var(--muted);">Nota: Testua edo audio bat sartu dezakezu, beharrezkoa ez da bi bat sartu.</p>
           </div>
-          <button type="submit" class="cta">Submit / Bidali</button>
+
+          <button type="submit" class="cta">Bidali</button>
         </form>
       </div>
     </section>
@@ -59,12 +73,32 @@
   <script>
     const form = document.getElementById('guzandaForm');
     const recordBtn = document.getElementById('recordBtn');
-    const stopBtn = document.getElementById('stopBtn');
     const audioStatus = document.getElementById('audioStatus');
     const audioInput = document.getElementById('audioInput');
+    const waveform = document.getElementById('waveform');
+    const audioActions = document.getElementById('audioActions');
+    const removeAudioBtn = document.getElementById('removeAudioBtn');
+
+    const tabButtons = document.querySelectorAll('.tab');
+    const tabPanels = document.querySelectorAll('.tab-panel');
+
+    tabButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const target = btn.dataset.tab;
+        tabButtons.forEach((b) => {
+          const active = b.dataset.tab === target;
+          b.classList.toggle('active', active);
+          b.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        tabPanels.forEach((p) => {
+          p.classList.toggle('active', p.dataset.panel === target);
+        });
+      });
+    });
 
     let mediaRecorder;
     let audioChunks = [];
+    let audioBlobRef = null;
 
     const STORAGE_KEY = 'guzandaFormData';
 
@@ -105,9 +139,8 @@
       const formData = new FormData(form);
       
       // If we have recorded audio, add it to form data
-      if (audioChunks.length > 0) {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        const audioFile = new File([audioBlob], `recording_${Date.now()}.webm`, { type: 'audio/webm' });
+      if (audioBlobRef) {
+        const audioFile = new File([audioBlobRef], `recording_${Date.now()}.webm`, { type: 'audio/webm' });
         formData.set('audio', audioFile);
       }
 
@@ -136,27 +169,56 @@
       }
     });
 
+    const START_LABEL = 'Start Recording';
+    const STOP_LABEL = 'Itxi / Stop Recording';
+
+    function setRecordingUI(recording) {
+      waveform.classList.toggle('recording', recording);
+      if (recording) {
+        recordBtn.textContent = STOP_LABEL;
+        recordBtn.setAttribute('aria-pressed', 'true');
+        audioActions.hidden = true;
+      } else {
+        recordBtn.textContent = START_LABEL;
+        recordBtn.setAttribute('aria-pressed', 'false');
+        waveform.classList.remove('recording');
+        // Show the "remove / record another" option only if we have audio
+        if (audioBlobRef) {
+          audioActions.hidden = false;
+        }
+      }
+    }
+
     recordBtn.addEventListener('click', async () => {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        audioStatus.textContent = 'Audioa grabatuta';
+        audioStatus.style.color = 'var(--sea)';
+        return;
+      }
+
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaRecorder = new MediaRecorder(stream);
-        
+
         audioChunks = [];
+        audioBlobRef = null;
         mediaRecorder.ondataavailable = (event) => {
           if (event.data.size > 0) {
             audioChunks.push(event.data);
           }
         };
-        
+
         mediaRecorder.onstop = () => {
           // Clean up
           stream.getTracks().forEach(track => track.stop());
+          audioBlobRef = new Blob(audioChunks, { type: 'audio/webm' });
+          setRecordingUI(false);
         };
 
         mediaRecorder.start();
-        recordBtn.disabled = true;
-        stopBtn.disabled = false;
-        audioStatus.textContent = 'Eragikortzando... / Recording...';
+        setRecordingUI(true);
+        audioStatus.textContent = '';
         audioStatus.style.color = 'var(--accent)';
       } catch (err) {
         audioStatus.textContent = `Errorea mikrofonokian atzitzean: ${err.message}`;
@@ -164,14 +226,16 @@
       }
     });
 
-    stopBtn.addEventListener('click', () => {
-      if (mediaRecorder && mediaRecorder.state === 'recording') {
+    removeAudioBtn.addEventListener('click', () => {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop();
-        recordBtn.disabled = false;
-        stopBtn.disabled = true;
-        audioStatus.textContent = 'Eragikorrena itxi da. Forma bidali ahal duzu. / Recording stopped. You can now submit the form.';
-        audioStatus.style.color = 'var(--sea)';
       }
+      audioChunks = [];
+      audioBlobRef = null;
+      audioActions.hidden = true;
+      audioStatus.textContent = '';
+      recordBtn.textContent = START_LABEL;
+      recordBtn.setAttribute('aria-pressed', 'false');
     });
   </script>
 </body>
