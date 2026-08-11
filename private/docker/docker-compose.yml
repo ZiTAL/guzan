@@ -14,5 +14,7 @@ services:
       - ../uploads:/app/private/uploads
       - ../../public:/app/public
 
+    env_file:
+      - .env
     environment:
       - TZ=Europe/Madrid

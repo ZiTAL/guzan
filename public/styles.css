@@ -46,6 +46,14 @@ body {
   padding: 2.2rem 0 3.2rem;
 }
 
+.hero--compact .hero__content {
+  padding-bottom: 0.5rem;
+}
+
+.section--compact {
+  padding-top: 1rem;
+}
+
 .hero__front-image {
   width: 100%;
   display: block;
@@ -254,8 +262,16 @@ h1 {
     min-height: 65vh;
   }
 
+  .hero--compact {
+    min-height: auto;
+  }
+
   .section {
     padding: 3rem 0;
+  }
+
+  .section--compact {
+    padding-top: 1rem;
   }
 
   .grid {
@@ -325,10 +341,6 @@ h1 {
   max-width: 600px;
 }
 
-.success-title {
-  color: var(--sea-deep);
-}
-
 .success__actions {
   display: flex;
   flex-wrap: wrap;
@@ -338,6 +350,14 @@ h1 {
 
 .success__actions a.cta {
   color: #fff;
+}
+
+.success__actions .success__row {
+  flex-basis: 100%;
+}
+
+.success__actions a.cta.cta--home {
+  background: var(--sea);
 }
 
 .cta--ghost {

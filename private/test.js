@@ -141,7 +141,7 @@ const testAudioUpload = () => {
         let data = '';
         res.on('data', (chunk) => { data += chunk; });
         res.on('end', () => {
-          if (res.statusCode === 200 && data.includes('Submission Successful')) {
+          if (res.statusCode === 200 && data.includes('Bidalketa Jaso da')) {
             console.log('Audio upload test passed: submission accepted.');
             resolve();
           } else {

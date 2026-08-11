@@ -44,7 +44,8 @@ The Guzanda form (`guzanda.html`) provides:
 
 ### Technical Implementation
 - **Backend**: Node.js with Express framework
-- **Database**: SQLite for persistent storage of submissions, including an 'approved' field for moderation (0/1). Each submission stores an `audio` field containing the absolute realpath of the uploaded audio file in `private/uploads/`
+- **Database**: SQLite for persistent storage of submissions, including an 'approved' field for moderation (0/1). Each submission stores an `audio` field containing the absolute realpath of the uploaded audio file in `private/uploads/`. Each submission also gets a unique `review_token` used to build the unguessable review URL
+- **Email notifications**: Nodemailer sends the moderator an email with a private review link on every submission. SMTP settings are read from environment variables (see `private/docker/.env.example`)
 - **File handling**: Multer middleware for secure audio uploads; uploaded files are written to `private/uploads/` and their realpath is recorded in the database
 - **Frontend**: Semantic HTML5 with CSS3 styling and vanilla JavaScript
 - **Media recording**: Uses the MediaRecorder API for browser-based audio capture
@@ -58,13 +59,21 @@ The Guzanda form (`guzanda.html`) provides:
    - Server validates required fields (name, contact)
    - If audio was recorded, it's processed and saved to `private/uploads/`
    - Submission data is stored in `private/guzanda.db`: the `audio_file` column holds the uploaded filename, and the `audio` column stores the absolute realpath of the file in `private/uploads/`
+   - A random `review_token` is generated and stored with the submission
+   - An email with a review link (`https://guzan.eus/review/<token>`) is sent to the configured moderator address
    - User receives success confirmation with navigation links
+4. The moderator opens the review link:
+   - The review page shows name, contact, description, and an audio player
+   - Clicking "Onartu / Approve" sets `approved = 1` in the database
+   - The audio file is only reachable through the authenticated review page (via `/review/<token>/audio`)
 
 ## Privacy Considerations
 
 - All submission data is stored locally in SQLite database
 - Audio files are stored in the private uploads directory
 - No data is transmitted to external servers without explicit user action
+- Review links are protected by an unguessable per-submission token; the review page and its audio are only accessible with that token
+- SMTP credentials are passed via environment variables (`.env` in `private/docker/`, gitignored), never committed to the repository
 - Direct web access to database and uploads is prevented by server configuration
 - Documentation explains the system without exposing sensitive file contents
 
@@ -106,9 +115,20 @@ The application is designed to be straightforward to maintain:
 - Clear separation between public assets and private data
 - Well-documented security boundaries
 - Standard Node.js/Express patterns
-- Minimal dependencies (Express, Multer, SQLite3)
+- Minimal dependencies (Express, Multer, SQLite3, Nodemailer)
 - Responsive design that works on mobile and desktop devices
 - Containerized deployment for easy rollback and consistent environments
+
+### Configuration
+
+SMTP email settings are read from environment variables (see `private/docker/.env.example`):
+- `GUZAN_PUBLIC_URL` – public base URL used to build review links
+- `GUZAN_SMTP_HOST` / `GUZAN_SMTP_PORT` / `GUZAN_SMTP_SECURE` – SMTP connection settings
+- `GUZAN_SMTP_USER` / `GUZAN_SMTP_PASS` – Gmail address and app password
+- `GUZAN_MAIL_TO` – the address that receives review notifications
+- `GUZAN_MAIL_ENABLED` – set to `false` to disable emails
+
+To configure the deployed container, create `private/docker/.env` (copy `.env.example`) and restart the container. If SMTP is not configured, submissions still work and emailing is skipped with a log message.
 
 ## Testing
 

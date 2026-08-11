@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <header class="hero">
+  <header class="hero hero--compact">
     <div class="shell hero__content">
       <p class="tag">BERMEO · HERRI PLATAFORMA</p>
       <h1>GUZANDA</h1>
@@ -15,18 +15,18 @@
   </header>
 
   <main>
-    <section class="shell section">
+    <section class="shell section section--compact">
       <div class="section__head">
         <h2>Bidalketa Jaso da</h2>
       </div>
       <div class="shell">
         <div class="card success-card">
-          <h3 class="success-title">Submission Successful!</h3>
-          <p>Thank you, {{name}}. Your submission has been received.</p>
-          <p>Eskerrik asko, {{name}}. Zure bidalketa jaso da.</p>
+          <p>Eskerrik asko, {{name}}.</p>
           <div class="success__actions">
-            <a class="cta" href="/guzanda">Submit another / Beste bat bidali</a>
-            <a class="cta cta--ghost" href="/">Return to home / Hasierara itzuli</a>
+            <a class="cta" href="/guzanda">Beste bat bidali</a>
+            <div class="success__row">
+              <a class="cta cta--home" href="/">Hasierara itzuli</a>
+            </div>
           </div>
         </div>
       </div>
