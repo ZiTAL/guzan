@@ -37,7 +37,7 @@ Contains sensitive data that should not be directly accessible via the web:
 The Guzanda form (`guzanda.html`) provides:
 - Standard text inputs for name and contact information
 - Textarea for detailed descriptions
-- Microphone-based audio recording (alternative to file upload)
+- Microphone-based audio recording (alternative to file upload) with a live `HH:MM:SS` timer and a 5-minute maximum; recording stops automatically at the limit
 - Form validation requiring name and contact fields
 - Successful submission feedback with navigation options
 - LocalStorage persistence of form data for user convenience: the item `guzandaFormData` stores `name`, `contact` and `description` as the user types, and the values are restored automatically when the form page is loaded again
@@ -45,12 +45,12 @@ The Guzanda form (`guzanda.html`) provides:
 ### Technical Implementation
 - **Backend**: Node.js with Express framework
 - **Database**: SQLite for persistent storage of submissions, including an 'approved' field for moderation (0/1). Each submission stores an `audio` field containing the absolute realpath of the uploaded audio file in `private/uploads/`. Each submission also gets a unique `review_token` used to build the unguessable review URL
-- **Email notifications**: Nodemailer sends the moderator an email with a private review link on every submission. SMTP settings are read from environment variables (see `private/docker/.env.example`)
+- **Email notifications**: Nodemailer sends the moderator an email with a private review link on every submission. SMTP settings are read from environment variables (see `docker/.env.example`)
 - **File handling**: Multer middleware for secure audio uploads; uploaded files are written to `private/uploads/` and their realpath is recorded in the database
 - **Frontend**: Semantic HTML5 with CSS3 styling and vanilla JavaScript
 - **Media recording**: Uses the MediaRecorder API for browser-based audio capture
 - **Shared markup**: Repeated page regions (currently the footer) live in a single partial, `private/partials/footer.html`, and are injected server-side. Public HTML pages use a `{{footer}}` placeholder, and `server.js` replaces it via the `renderPage()` helper before sending. This way the footer is edited in exactly one file. `express.static` is configured with `index: false` so the home page is served through the `/` route (which renders the partial) instead of being sent raw from disk
-- **Dynamic Instagram posts**: The homepage's "last 3 posts" are served by a server-side proxy at `/api/instagram`. `server.js` fetches the latest posts (from `GUZAN_INSTAGRAM_FEED_URLS`, or public RSS bridges by default), caches them for `GUZAN_INSTAGRAM_CACHE_TTL` seconds (default 1 hour), and returns JSON. `app.js` fetches that same-origin endpoint and renders the cards. If no feed is reachable, it falls back to the static cards baked into `app.js`. Because Instagram blocks anonymous scraping, the default bridges may be unreachable; setting `GUZAN_INSTAGRAM_FEED_URLS` to a working source (e.g. a self-hosted RSSHub instance) makes the feed live
+- **Dynamic Instagram posts**: The homepage's "last 3 posts" are served by a server-side proxy at `/api/instagram`. `server.js` scrapes the profile page of `GUZAN_INSTAGRAM_USER` (default `guzanbermeo`) using a headless Chromium launched via Playwright, caches the result for `GUZAN_INSTAGRAM_CACHE_TTL` seconds (default 1 hour), and returns JSON. The grid is scanned for both photo (`/p/`) and reel (`/reel/`) links so the most recent posts are always picked up regardless of type. Each of the top 3 posts is then opened individually and its real caption is read from the post page's `meta[name=description]`/`og:description` metadata — the profile grid's `img.alt` is only Instagram's auto-generated image description, so it is never used. Cards show image + caption title + link (no separate description paragraph). If the scrape fails (e.g. Instagram serves a login wall), the endpoint returns an empty list and the frontend falls back to the static cards baked into `app.js`. Because Instagram heavily blocks anonymous scraping, the feed may be unreliable; the scrape runs in the container's bundled Chromium (installed at image build time)
 
 ## Data Flow
 
@@ -75,7 +75,7 @@ The Guzanda form (`guzanda.html`) provides:
 - Audio files are stored in the private uploads directory
 - No data is transmitted to external servers without explicit user action
 - Review links are protected by an unguessable per-submission token; the review page and its audio are only accessible with that token
-- SMTP credentials are passed via environment variables (`.env` in `private/docker/`, gitignored), never committed to the repository
+- SMTP credentials are passed via environment variables (`.env` in `docker/`, gitignored), never committed to the repository
 - Direct web access to database and uploads is prevented by server configuration
 - Documentation explains the system without exposing sensitive file contents
 
@@ -85,15 +85,15 @@ The application runs inside a container managed with Docker Compose (using Podma
 
 ### Container Setup
 
-The Docker configuration lives in `private/docker/`:
+The Docker configuration lives in `docker/`:
 - `docker-compose.yml` - defines the `guzanda` service
-- `Dockerfile` - builds the Node.js image (copies `private/` and `public/`, installs production dependencies from `package.json`)
+- `Dockerfile` - builds the Node.js image (copies `private/` and `public/`, installs production dependencies from `package.json`, and installs Playwright's Chromium browser with its system dependencies for the Instagram feed)
 - `build.sh` - convenience script that runs `podman compose down && podman compose up -d --build`
 
 The container:
-- Listens on port 3000 so Caddy's `reverse_proxy localhost:3000` keeps working unchanged
+- Exposes the app on port 3000, published on the host as port 8005 (`8005:3000`)
 - Bind-mounts `private/guzanda.db`, `private/uploads/`, and `public/` from the host, so submissions, audio files, and frontend assets persist on the host even when the container is rebuilt
-- Runs on a `node:24-alpine` base image
+- Runs on a `node:24-trixie-slim` base image (chosen so Playwright can install Chromium with its system dependencies)
 - Restarts automatically via `restart: unless-stopped` (and on boot when the container service is enabled)
 
 > **Note on live vs. baked-in changes:** `public/` is bind-mounted, so edits to HTML, CSS, and client-side JS are picked up immediately (no rebuild needed). `private/` is baked into the image at build time, so changes to `server.js`, the `partials/` folder, `review.html`, or `package.json` require rebuilding the image and recreating the container.
@@ -101,7 +101,7 @@ The container:
 ### Running
 
 ```bash
-cd private/docker
+cd docker
 podman compose up -d --build    # build image and start the container
 podman compose ps               # verify the container is running
 podman compose logs -f          # follow logs
@@ -110,13 +110,13 @@ podman compose down             # stop and remove the container
 
 To deploy a new version, rebuild and restart:
 ```bash
-cd private/docker
+cd docker
 podman compose up -d --build
 ```
 
 If the container name is already in use after a rebuild (e.g. an old container is still running), recreate it:
 ```bash
-cd private/docker
+cd docker
 podman compose down && podman compose up -d
 ```
 
@@ -126,20 +126,22 @@ The application is designed to be straightforward to maintain:
 - Clear separation between public assets and private data
 - Well-documented security boundaries
 - Standard Node.js/Express patterns
-- Minimal dependencies (Express, Multer, SQLite3, Nodemailer)
+- Minimal dependencies (Express, Multer, SQLite3, Nodemailer, Playwright)
 - Responsive design that works on mobile and desktop devices
 - Containerized deployment for easy rollback and consistent environments
 
 ### Configuration
 
-SMTP email settings are read from environment variables (see `private/docker/.env.example`):
+SMTP email settings are read from environment variables (see `docker/.env.example`):
 - `GUZAN_PUBLIC_URL` – public base URL used to build review links
 - `GUZAN_SMTP_HOST` / `GUZAN_SMTP_PORT` / `GUZAN_SMTP_SECURE` – SMTP connection settings
 - `GUZAN_SMTP_USER` / `GUZAN_SMTP_PASS` – Gmail address and app password
 - `GUZAN_MAIL_TO` – the address that receives review notifications
 - `GUZAN_MAIL_ENABLED` – set to `false` to disable emails
+- `GUZAN_INSTAGRAM_USER` – Instagram username whose latest posts are scraped for the homepage (default `guzanbermeo`)
+- `GUZAN_INSTAGRAM_CACHE_TTL` – how many seconds to cache scraped posts before re-checking (default `3600`)
 
-To configure the deployed container, create `private/docker/.env` (copy `.env.example`) and restart the container. If SMTP is not configured, submissions still work and emailing is skipped with a log message.
+To configure the deployed container, create `docker/.env` (copy `.env.example`) and restart the container. If SMTP is not configured, submissions still work and emailing is skipped with a log message.
 
 ## Testing
 

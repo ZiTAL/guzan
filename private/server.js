@@ -7,7 +7,7 @@ const nodemailer = require('nodemailer');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Configuration from environment variables (see private/docker/.env.example)
+// Configuration from environment variables (see docker/.env.example)
 function env(name, fallback) {
   const value = process.env[name];
   if (value == null || value.startsWith('${')) return fallback;
@@ -246,28 +246,49 @@ async function scrapeInstagramWithPlaywright() {
       timeout: 30000
     });
     try {
-      await page.waitForSelector('a[href*="/p/"]', { timeout: 15000 });
+      await page.waitForSelector('a[href*="/p/"], a[href*="/reel/"]', { timeout: 15000 });
     } catch (_) {
       // selector may not appear if a login wall shows; extraction handles that
     }
-    const posts = await page.evaluate(() => {
+    const grid = await page.evaluate(() => {
       const seen = new Set();
       const out = [];
-      for (const a of document.querySelectorAll('a[href*="/p/"]')) {
-        const m = a.href.match(/\/p\/([A-Za-z0-9_-]+)/);
+      for (const a of document.querySelectorAll('a[href*="/p/"], a[href*="/reel/"]')) {
+        const m = a.href.match(/\/(?:p|reel)\/([A-Za-z0-9_-]+)/);
         if (!m || seen.has(m[1])) continue;
         seen.add(m[1]);
         const img = a.querySelector('img');
         out.push({
-          title: '',
-          description: img ? img.alt || '' : '',
-          link: 'https://www.instagram.com/p/' + m[1] + '/',
+          link: a.href,
           thumbnail: img ? img.currentSrc || img.src || '' : ''
         });
         if (out.length >= 3) break;
       }
       return out;
     });
+
+    const posts = [];
+    for (const entry of grid) {
+      let title = '';
+      try {
+        // Open each post and read the real caption from its page metadata
+        // (the profile grid only exposes auto-generated image alt text).
+        await page.goto(entry.link, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        title = await page.evaluate(() => {
+          const m = document.querySelector('meta[name="description"]') ||
+                   document.querySelector('meta[property="og:description"]');
+          if (!m || !m.content) return '';
+          const start = m.content.indexOf(': "');
+          if (start === -1) return m.content;
+          const inner = m.content.slice(start + 3);
+          const end = inner.lastIndexOf('"');
+          return end > 0 ? inner.slice(0, end).trim() : inner.trim();
+        });
+      } catch (err) {
+        console.error('[instagram] caption fetch failed:', err.message);
+      }
+      posts.push({ title, link: entry.link, thumbnail: entry.thumbnail });
+    }
     return posts;
   } finally {
     await context.close();

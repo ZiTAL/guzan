@@ -1,7 +1,7 @@
 private/node_modules
 private/guzanda.db
 private/uploads
-private/docker
+docker
 .git
 README.md
 DOCUMENTATION.md

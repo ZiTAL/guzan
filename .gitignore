@@ -8,7 +8,7 @@ private/guzanda.db
 private/uploads/
 
 # Docker secrets
-private/docker/.env
+docker/.env
 
 # Swap / temp
 *.swp

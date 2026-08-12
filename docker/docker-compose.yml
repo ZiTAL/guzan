@@ -3,16 +3,16 @@ name: guzanda
 services:
   guzanda:
     build:
-      context: ../..
-      dockerfile: private/docker/Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: guzanda
     restart: unless-stopped
     ports:
       - "8005:3000"
     volumes:
-      - ../guzanda.db:/app/private/guzanda.db
-      - ../uploads:/app/private/uploads
-      - ../../public:/app/public
+      - ../private/guzanda.db:/app/private/guzanda.db
+      - ../private/uploads:/app/private/uploads
+      - ../public:/app/public
 
     env_file:
       - .env
