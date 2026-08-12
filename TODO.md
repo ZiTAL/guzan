@@ -1,3 +1,2 @@
-- Onartua / Approved -> Onartua
-- Ezeztatuta / Rejected -> Ezeztatuta
-- "Onartu" color in green
+- Refactor the code
+- Update documentation

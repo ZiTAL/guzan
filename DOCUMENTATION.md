@@ -23,6 +23,7 @@ Contains assets that are safe to serve directly via the web server:
 Contains sensitive data that should not be directly accessible via the web:
 - SQLite database storing form submissions
 - Uploaded audio files from the Guzanda form
+- Application code: `server.js` (entry point: middleware + mounts the routes), `config.js` (env configuration), `routes.js` (all HTTP routes), and helper modules in `lib/`
 - Any other private data
 
 ## Key Features
@@ -43,14 +44,22 @@ The Guzanda form (`guzanda.html`) provides:
 - LocalStorage persistence of form data for user convenience: the item `guzandaFormData` stores `name`, `contact` and `description` as the user types, and the values are restored automatically when the form page is loaded again
 
 ### Technical Implementation
-- **Backend**: Node.js with Express framework
+- **Backend**: Node.js with Express framework, split into small modules:
+  - `private/server.js` – entry point: sets up Express, middleware (body parsing, static files, request logging, `.db`/`.md` blocking), and mounts the route router
+  - `private/config.js` – reads all configuration from environment variables (see `docker/.env.example`)
+  - `private/routes.js` – all HTTP routes (home, Guzanda form, review, `/api/instagram`), file upload setup, and status badge/form rendering
+  - `private/lib/db.js` – SQLite connection, table schema/migration, and query helpers
+  - `private/lib/security.js` – HTML escaping and CSRF token handling
+  - `private/lib/email.js` – SMTP notification via Nodemailer
+  - `private/lib/instagram.js` – Playwright scraper with result caching
+  - `private/lib/templates.js` – server-side rendering of shared partials (`{{footer}}`)
 - **Database**: SQLite for persistent storage of submissions, including an 'approved' field for moderation with three states: `-1` Erabakitzeke / pending (default), `0` Ezeztatuta / rejected, `1` Onartua / approved. Each submission stores an `audio` field containing the absolute realpath of the uploaded audio file in `private/uploads/`. Each submission also gets a unique `review_token` used to build the unguessable review URL
 - **Email notifications**: Nodemailer sends the moderator an email with a private review link on every submission. SMTP settings are read from environment variables (see `docker/.env.example`)
 - **File handling**: Multer middleware for secure audio uploads; uploaded files are written to `private/uploads/` and their realpath is recorded in the database
 - **Frontend**: Semantic HTML5 with CSS3 styling and vanilla JavaScript
 - **Media recording**: Uses the MediaRecorder API for browser-based audio capture
-- **Shared markup**: Repeated page regions (currently the footer) live in a single partial, `private/partials/footer.html`, and are injected server-side. Public HTML pages use a `{{footer}}` placeholder, and `server.js` replaces it via the `renderPage()` helper before sending. This way the footer is edited in exactly one file. `express.static` is configured with `index: false` so the home page is served through the `/` route (which renders the partial) instead of being sent raw from disk
-- **Dynamic Instagram posts**: The homepage's "last 3 posts" are served by a server-side proxy at `/api/instagram`. `server.js` scrapes the profile page of `GUZAN_INSTAGRAM_USER` (default `guzanbermeo`) using a headless Chromium launched via Playwright, caches the result for `GUZAN_INSTAGRAM_CACHE_TTL` seconds (default 1 hour), and returns JSON. The grid is scanned for both photo (`/p/`) and reel (`/reel/`) links so the most recent posts are always picked up regardless of type. Each of the top 3 posts is then opened individually and its real caption is read from the post page's `meta[name=description]`/`og:description` metadata — the profile grid's `img.alt` is only Instagram's auto-generated image description, so it is never used. Cards show image + caption title + link (no separate description paragraph). If the scrape fails (e.g. Instagram serves a login wall), the endpoint returns an empty list and the frontend falls back to the static cards baked into `app.js`. Because Instagram heavily blocks anonymous scraping, the feed may be unreliable; the scrape runs in the container's bundled Chromium (installed at image build time)
+- **Shared markup**: Repeated page regions (currently the footer) live in a single partial, `private/partials/footer.html`, and are injected server-side. Public HTML pages use a `{{footer}}` placeholder, and the `renderPage()` helper in `private/lib/templates.js` replaces it before sending. This way the footer is edited in exactly one file. `express.static` is configured with `index: false` so the home page is served through the `/` route (which renders the partial) instead of being sent raw from disk
+- **Dynamic Instagram posts**: The homepage's "last 3 posts" are served by a server-side proxy at `/api/instagram`. `private/lib/instagram.js` scrapes the profile page of `GUZAN_INSTAGRAM_USER` (default `guzanbermeo`) using a headless Chromium launched via Playwright, caches the result for `GUZAN_INSTAGRAM_CACHE_TTL` seconds (default 1 hour), and returns JSON. The grid is scanned for both photo (`/p/`) and reel (`/reel/`) links so the most recent posts are always picked up regardless of type. Each of the top 3 posts is then opened individually and its real caption is read from the post page's `meta[name=description]`/`og:description` metadata — the profile grid's `img.alt` is only Instagram's auto-generated image description, so it is never used. Cards show image + caption title + link (no separate description paragraph). If the scrape fails (e.g. Instagram serves a login wall), the endpoint returns an empty list and the frontend falls back to the static cards baked into `app.js`. Because Instagram heavily blocks anonymous scraping, the feed may be unreliable; the scrape runs in the container's bundled Chromium (installed at image build time)
 
 ## Data Flow
 
@@ -97,7 +106,7 @@ The container:
 - Runs on a `node:24-trixie-slim` base image (chosen so Playwright can install Chromium with its system dependencies)
 - Restarts automatically via `restart: unless-stopped` (and on boot when the container service is enabled)
 
-> **Note on live vs. baked-in changes:** `public/` is bind-mounted, so edits to HTML, CSS, and client-side JS are picked up immediately (no rebuild needed). `private/` is baked into the image at build time, so changes to `server.js`, the `partials/` folder, `review.html`, or `package.json` require rebuilding the image and recreating the container.
+> **Note on live vs. baked-in changes:** `public/` is bind-mounted, so edits to HTML, CSS, and client-side JS are picked up immediately (no rebuild needed). `private/` is baked into the image at build time, so changes to `server.js`, `config.js`, `routes.js`, the `lib/` folder, the `partials/` folder, `review.html`, or `package.json` require rebuilding the image and recreating the container.
 
 ### Running
 
