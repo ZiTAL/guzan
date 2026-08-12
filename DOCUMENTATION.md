@@ -49,6 +49,8 @@ The Guzanda form (`guzanda.html`) provides:
 - **File handling**: Multer middleware for secure audio uploads; uploaded files are written to `private/uploads/` and their realpath is recorded in the database
 - **Frontend**: Semantic HTML5 with CSS3 styling and vanilla JavaScript
 - **Media recording**: Uses the MediaRecorder API for browser-based audio capture
+- **Shared markup**: Repeated page regions (currently the footer) live in a single partial, `private/partials/footer.html`, and are injected server-side. Public HTML pages use a `{{footer}}` placeholder, and `server.js` replaces it via the `renderPage()` helper before sending. This way the footer is edited in exactly one file. `express.static` is configured with `index: false` so the home page is served through the `/` route (which renders the partial) instead of being sent raw from disk
+- **Dynamic Instagram posts**: The homepage's "last 3 posts" are served by a server-side proxy at `/api/instagram`. `server.js` fetches the latest posts (from `GUZAN_INSTAGRAM_FEED_URLS`, or public RSS bridges by default), caches them for `GUZAN_INSTAGRAM_CACHE_TTL` seconds (default 1 hour), and returns JSON. `app.js` fetches that same-origin endpoint and renders the cards. If no feed is reachable, it falls back to the static cards baked into `app.js`. Because Instagram blocks anonymous scraping, the default bridges may be unreachable; setting `GUZAN_INSTAGRAM_FEED_URLS` to a working source (e.g. a self-hosted RSSHub instance) makes the feed live
 
 ## Data Flow
 
@@ -86,27 +88,36 @@ The application runs inside a container managed with Docker Compose (using Podma
 The Docker configuration lives in `private/docker/`:
 - `docker-compose.yml` - defines the `guzanda` service
 - `Dockerfile` - builds the Node.js image (copies `private/` and `public/`, installs production dependencies from `package.json`)
+- `build.sh` - convenience script that runs `podman compose down && podman compose up -d --build`
 
 The container:
 - Listens on port 3000 so Caddy's `reverse_proxy localhost:3000` keeps working unchanged
-- Bind-mounts `private/guzanda.db` and `private/uploads/` from the host, so submissions and audio files persist on the host even when the container is rebuilt
+- Bind-mounts `private/guzanda.db`, `private/uploads/`, and `public/` from the host, so submissions, audio files, and frontend assets persist on the host even when the container is rebuilt
 - Runs on a `node:24-alpine` base image
 - Restarts automatically via `restart: unless-stopped` (and on boot when the container service is enabled)
+
+> **Note on live vs. baked-in changes:** `public/` is bind-mounted, so edits to HTML, CSS, and client-side JS are picked up immediately (no rebuild needed). `private/` is baked into the image at build time, so changes to `server.js`, the `partials/` folder, `review.html`, or `package.json` require rebuilding the image and recreating the container.
 
 ### Running
 
 ```bash
 cd private/docker
-docker-compose up -d --build   # or: podman-compose up -d --build
-docker compose ps              # verify the container is running
-docker compose logs -f         # follow logs
-docker compose down            # stop and remove the container
+podman compose up -d --build    # build image and start the container
+podman compose ps               # verify the container is running
+podman compose logs -f          # follow logs
+podman compose down             # stop and remove the container
 ```
 
 To deploy a new version, rebuild and restart:
 ```bash
 cd private/docker
-docker compose up -d --build
+podman compose up -d --build
+```
+
+If the container name is already in use after a rebuild (e.g. an old container is still running), recreate it:
+```bash
+cd private/docker
+podman compose down && podman compose up -d
 ```
 
 ## Maintenance
@@ -132,7 +143,7 @@ To configure the deployed container, create `private/docker/.env` (copy `.env.ex
 
 ## Testing
 
-Automated tests are defined in `private/test.js`. Start the server (either `node server.js` from `private/` or the container via `docker compose up -d`), then run `node test.js`. Tests cover:
+Automated tests are defined in `private/test.js`. Start the server (either `node server.js` from `private/` or the container via `podman compose up -d`), then run `node test.js`. Tests cover:
 - Home page and form page return 200
 - Direct access to `.db` and `.md` files returns 404
 - Audio upload: posts a multipart form with an audio file to `/guzanda`, verifies the submission succeeds, and (via `private/uploads/`) stores the uploaded file so its realpath can be recorded in the `audio` field of `private/guzanda.db`

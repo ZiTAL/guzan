@@ -1,6 +1,4 @@
 const INSTAGRAM_PROFILE_URL = "https://www.instagram.com/guzanbermeo/";
-const FEED_URL = "https://rsshub.app/instagram/user/guzanbermeo";
-const FEED_PROXY_URL = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(FEED_URL);
 
 function stripHtml(input) {
   const doc = new DOMParser().parseFromString(input || "", "text/html");
@@ -35,14 +33,13 @@ function fallbackPosts() {
   ];
 }
 
-function toPost(item, i) {
-  const description = stripHtml(item.description || item.content || "");
-  const title = stripHtml(item.title || "") || ("Instagram posta " + (i + 1));
+function toPost(post, i) {
+  const title = stripHtml(post.title) || truncate(post.description, 80) || ("Instagram posta " + (i + 1));
   return {
     title,
-    description: truncate(description, 170),
-    link: item.link || INSTAGRAM_PROFILE_URL,
-    thumbnail: item.thumbnail || ("./assets/images/instagram-" + (i + 1) + ".jpg")
+    description: truncate(post.description, 170),
+    link: post.link || INSTAGRAM_PROFILE_URL,
+    thumbnail: post.thumbnail || "./assets/images/instagram-" + (i + 1) + ".jpg"
   };
 }
 
@@ -66,12 +63,12 @@ function renderError() {
 
 async function loadInstagramPosts() {
   try {
-    const response = await fetch(FEED_PROXY_URL, { headers: { Accept: "application/json" } });
+    const response = await fetch("/api/instagram", { headers: { Accept: "application/json" } });
     if (!response.ok) throw new Error("Bad response");
     const payload = await response.json();
-    const items = Array.isArray(payload.items) ? payload.items.slice(0, 3) : [];
-    if (!items.length) throw new Error("No items");
-    renderPosts(items.map(toPost));
+    const posts = Array.isArray(payload.posts) ? payload.posts.slice(0, 3) : [];
+    if (!posts.length) throw new Error("No items");
+    renderPosts(posts.map(toPost));
   } catch (_) {
     renderPosts(fallbackPosts());
     renderError();

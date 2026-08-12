@@ -16,6 +16,8 @@ function env(name, fallback) {
 
 const config = {
   publicUrl: env('GUZAN_PUBLIC_URL', 'https://guzan.eus'),
+  instagramUser: env('GUZAN_INSTAGRAM_USER', 'guzanbermeo'),
+  instagramCacheTtlMs: parseInt(env('GUZAN_INSTAGRAM_CACHE_TTL', '3600'), 10) * 1000,
   mailEnabled: env('GUZAN_MAIL_ENABLED', 'true') !== 'false',
   smtp: {
     host: env('GUZAN_SMTP_HOST', 'smtp.gmail.com'),
@@ -30,7 +32,7 @@ const config = {
 // Middleware
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../public')));
+app.use(express.static(path.join(__dirname, '../public'), { index: false }));
 
 // Debug middleware to see what's coming in
 app.use((req, res, next) => {
@@ -202,13 +204,114 @@ function getSubmissionByToken(token, cb) {
   db.get(`SELECT * FROM guzanda WHERE review_token = ?`, [token], cb);
 }
 
+// Shared partials (single source of truth for repeated markup)
+const FOOTER_PARTIAL = fs.readFileSync(path.join(__dirname, 'partials', 'footer.html'), 'utf8');
+
+function renderPage(file) {
+  let html = fs.readFileSync(file, 'utf8');
+  return html.split('{{footer}}').join(FOOTER_PARTIAL);
+}
+
+// Instagram feed proxy: scrapes the profile page with Playwright to get the
+// latest posts, caches them, and exposes them at /api/instagram. Falls back
+// gracefully to an empty list (the frontend then renders its static cards).
+const instagramCache = { posts: [], fetchedAt: 0 };
+
+let instagramBrowserPromise = null;
+
+async function getInstagramBrowser() {
+  if (!instagramBrowserPromise) {
+    const { chromium } = require('playwright');
+    instagramBrowserPromise = chromium.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+    });
+  }
+  return instagramBrowserPromise;
+}
+
+async function scrapeInstagramWithPlaywright() {
+  const browser = await getInstagramBrowser();
+  const context = await browser.newContext({
+    userAgent:
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+      '(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    viewport: { width: 1280, height: 800 },
+    locale: 'es-ES'
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto(`https://www.instagram.com/${config.instagramUser}/`, {
+      waitUntil: 'domcontentloaded',
+      timeout: 30000
+    });
+    try {
+      await page.waitForSelector('a[href*="/p/"]', { timeout: 15000 });
+    } catch (_) {
+      // selector may not appear if a login wall shows; extraction handles that
+    }
+    const posts = await page.evaluate(() => {
+      const seen = new Set();
+      const out = [];
+      for (const a of document.querySelectorAll('a[href*="/p/"]')) {
+        const m = a.href.match(/\/p\/([A-Za-z0-9_-]+)/);
+        if (!m || seen.has(m[1])) continue;
+        seen.add(m[1]);
+        const img = a.querySelector('img');
+        out.push({
+          title: '',
+          description: img ? img.alt || '' : '',
+          link: 'https://www.instagram.com/p/' + m[1] + '/',
+          thumbnail: img ? img.currentSrc || img.src || '' : ''
+        });
+        if (out.length >= 3) break;
+      }
+      return out;
+    });
+    return posts;
+  } finally {
+    await context.close();
+  }
+}
+
+async function fetchInstagramPosts() {
+  try {
+    const posts = await scrapeInstagramWithPlaywright();
+    return posts;
+  } catch (err) {
+    console.error('[instagram] Playwright scrape failed:', err.message);
+    instagramBrowserPromise = null;
+    return [];
+  }
+}
+
+async function getInstagramPosts() {
+  const now = Date.now();
+  if (instagramCache.posts.length && now - instagramCache.fetchedAt < config.instagramCacheTtlMs) {
+    return instagramCache.posts;
+  }
+  const posts = await fetchInstagramPosts();
+  instagramCache.posts = posts;
+  instagramCache.fetchedAt = now;
+  return posts;
+}
+
+app.get('/api/instagram', async (req, res) => {
+  try {
+    const posts = await getInstagramPosts();
+    res.json({ posts });
+  } catch (_) {
+    res.status(500).json({ posts: [] });
+  }
+});
+
 // Routes
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public', 'index.html'));
+  res.send(renderPage(path.join(__dirname, '../public', 'index.html')));
 });
 app.get('/guzanda', (req, res) => {
   const token = issueCsrfToken();
-  let html = fs.readFileSync(path.join(__dirname, '../public', 'guzanda.html'), 'utf8');
+  let html = renderPage(path.join(__dirname, '../public', 'guzanda.html'));
   html = html.replace(
     '</form>',
     `<input type="hidden" name="csrf_token" value="${token}">\n        </form>`
@@ -249,7 +352,7 @@ app.post('/guzanda', upload.single('audio'), (req, res) => {
     };
     const reviewUrl = `${config.publicUrl}/review/${reviewToken}`;
     sendSubmissionEmail(submission, reviewUrl);
-    let html = fs.readFileSync(path.join(__dirname, '../public', 'guzanda-success.html'), 'utf8');
+    let html = renderPage(path.join(__dirname, '../public', 'guzanda-success.html'));
     html = html.split('{{name}}').join(name);
     res.send(html);
   });

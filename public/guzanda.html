@@ -9,7 +9,7 @@
 <body>
   <header class="hero hero--compact">
     <div class="shell hero__content">
-      <p class="tag">BERMEO · HERRI PLATAFORMA</p>
+      <p class="tag">GUZAN HERRI PLATAFORMA · BERMEO</p>
       <h1>GUZANDA</h1>
     </div>
   </header>
@@ -17,7 +17,7 @@
   <main>
     <section class="shell section section--compact">
       <div class="section__head">
-        <h2>Guzanda Formularioa</h2>
+        <h2>Zelan hobetuko lekizu Bermio?</h2>
       </div>
       <div class="shell">
         <form id="guzandaForm" action="/guzanda" method="post" enctype="multipart/form-data">
@@ -35,13 +35,13 @@
           </div>
 
           <div class="tab-panel active" id="panel-text" data-panel="text">
-            <label for="description" class="form-label">Deskribapena:</label>
-            <textarea id="description" name="description" rows="4" placeholder="Deskribapena hemen idatzi..." class="form-input"></textarea>
+            <textarea id="description" name="description" rows="4" placeholder="Deskribapena hemen idatzi..." class="form-input" aria-label="Deskribapena"></textarea>
           </div>
 
           <div class="tab-panel" id="panel-audio" data-panel="audio">
             <div id="audioRecorder">
               <button type="button" id="recordBtn" class="cta" aria-pressed="false">Start Recording</button>
+              <div class="rec-timer" id="recTimer" role="timer" aria-live="off">00:00:00</div>
               <div class="waveform" id="waveform" aria-hidden="true">
                 <span></span><span></span><span></span><span></span><span></span>
                 <span></span><span></span><span></span><span></span><span></span>
@@ -57,22 +57,18 @@
             </div>
           </div>
 
-          <button type="submit" class="cta">Bidali</button>
+          <button type="submit" class="cta">Bota!</button>
         </form>
       </div>
     </section>
   </main>
 
-  <footer class="footer">
-    <div class="shell footer__inner">
-      <p>GUZAN · Bermeo</p>
-      <p>Alkarregaz</p>
-    </div>
-  </footer>
+  {{footer}}
 
   <script>
     const form = document.getElementById('guzandaForm');
     const recordBtn = document.getElementById('recordBtn');
+    const recTimer = document.getElementById('recTimer');
     const audioStatus = document.getElementById('audioStatus');
     const audioInput = document.getElementById('audioInput');
     const waveform = document.getElementById('waveform');
@@ -99,6 +95,38 @@
     let mediaRecorder;
     let audioChunks = [];
     let audioBlobRef = null;
+
+    const MAX_RECORDING_MS = 5 * 60 * 1000;
+    let timerId = null;
+    let recordingStartTime = 0;
+
+    function formatTime(ms) {
+      const totalSecs = Math.floor(ms / 1000);
+      const h = Math.floor(totalSecs / 3600);
+      const m = Math.floor((totalSecs % 3600) / 60);
+      const s = totalSecs % 60;
+      return [h, m, s].map((n) => String(n).padStart(2, '0')).join(':');
+    }
+
+    function stopTimer() {
+      if (timerId) {
+        clearInterval(timerId);
+        timerId = null;
+      }
+    }
+
+    function startTimer() {
+      stopTimer();
+      recordingStartTime = Date.now();
+      recTimer.textContent = '00:00:00';
+      timerId = setInterval(() => {
+        const elapsed = Date.now() - recordingStartTime;
+        recTimer.textContent = formatTime(elapsed);
+        if (elapsed >= MAX_RECORDING_MS && mediaRecorder && mediaRecorder.state === 'recording') {
+          mediaRecorder.stop();
+        }
+      }, 500);
+    }
 
     const STORAGE_KEY = 'guzandaFormData';
 
@@ -174,6 +202,7 @@
 
     function setRecordingUI(recording) {
       waveform.classList.toggle('recording', recording);
+      recTimer.classList.toggle('recording', recording);
       if (recording) {
         recordBtn.textContent = STOP_LABEL;
         recordBtn.setAttribute('aria-pressed', 'true');
@@ -192,6 +221,7 @@
     recordBtn.addEventListener('click', async () => {
       if (mediaRecorder && mediaRecorder.state === 'recording') {
         mediaRecorder.stop();
+        stopTimer();
         audioStatus.textContent = 'Audioa grabatuta';
         audioStatus.style.color = 'var(--sea)';
         return;
@@ -212,11 +242,15 @@
         mediaRecorder.onstop = () => {
           // Clean up
           stream.getTracks().forEach(track => track.stop());
+          stopTimer();
           audioBlobRef = new Blob(audioChunks, { type: 'audio/webm' });
           setRecordingUI(false);
+          audioStatus.textContent = 'Audioa grabatuta';
+          audioStatus.style.color = 'var(--sea)';
         };
 
         mediaRecorder.start();
+        startTimer();
         setRecordingUI(true);
         audioStatus.textContent = '';
         audioStatus.style.color = 'var(--accent)';
@@ -230,8 +264,10 @@
       if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop();
       }
+      stopTimer();
       audioChunks = [];
       audioBlobRef = null;
+      recTimer.textContent = '00:00:00';
       audioActions.hidden = true;
       audioStatus.textContent = '';
       recordBtn.textContent = START_LABEL;
