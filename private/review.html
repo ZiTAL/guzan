@@ -44,6 +44,7 @@
     }
     .badge.approved { background: var(--green); }
     .badge.pending { background: var(--amber); }
+    .badge.rejected { background: #dc2626; }
     dl { display: grid; gap: 1rem; margin: 1.5rem 0; }
     dt { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
     dd { margin: .25rem 0 0; white-space: pre-wrap; word-break: break-word; }
@@ -60,6 +61,10 @@
       cursor: pointer;
     }
     .cta:hover { background: var(--accent-dark); }
+    .cta.approve { background: var(--green); }
+    .cta.approve:hover { background: #14532d; }
+    .cta.reject { background: #dc2626; margin-left: .5rem; }
+    .cta.reject:hover { background: #b91c1c; }
     .approved-note { color: var(--green); font-weight: 600; }
     a { color: var(--accent); }
   </style>

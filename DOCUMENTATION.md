@@ -44,7 +44,7 @@ The Guzanda form (`guzanda.html`) provides:
 
 ### Technical Implementation
 - **Backend**: Node.js with Express framework
-- **Database**: SQLite for persistent storage of submissions, including an 'approved' field for moderation (0/1). Each submission stores an `audio` field containing the absolute realpath of the uploaded audio file in `private/uploads/`. Each submission also gets a unique `review_token` used to build the unguessable review URL
+- **Database**: SQLite for persistent storage of submissions, including an 'approved' field for moderation with three states: `-1` Erabakitzeke / pending (default), `0` Ezeztatuta / rejected, `1` Onartua / approved. Each submission stores an `audio` field containing the absolute realpath of the uploaded audio file in `private/uploads/`. Each submission also gets a unique `review_token` used to build the unguessable review URL
 - **Email notifications**: Nodemailer sends the moderator an email with a private review link on every submission. SMTP settings are read from environment variables (see `docker/.env.example`)
 - **File handling**: Multer middleware for secure audio uploads; uploaded files are written to `private/uploads/` and their realpath is recorded in the database
 - **Frontend**: Semantic HTML5 with CSS3 styling and vanilla JavaScript
@@ -67,6 +67,7 @@ The Guzanda form (`guzanda.html`) provides:
 4. The moderator opens the review link:
    - The review page shows name, contact, description, and an audio player
    - Clicking "Onartu" sets `approved = 1` in the database
+   - Clicking "Ezeztatu" (red button) sets `approved = 0` in the database
    - The audio file is only reachable through the authenticated review page (via `/review/<token>/audio`)
 
 ## Privacy Considerations

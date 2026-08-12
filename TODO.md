@@ -1,0 +1,3 @@
+- Onartua / Approved -> Onartua
+- Ezeztatuta / Rejected -> Ezeztatuta
+- "Onartu" color in green

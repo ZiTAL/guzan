@@ -83,7 +83,7 @@ db.run(`CREATE TABLE IF NOT EXISTS guzanda (
   audio_file TEXT,
   audio TEXT,
   review_token TEXT,
-  approved INTEGER DEFAULT 0,
+  approved INTEGER DEFAULT -1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 )`);
 
@@ -97,7 +97,7 @@ db.all(`PRAGMA table_info(guzanda)`, (err, rows) => {
   const existing = rows.map((col) => col.name);
   for (const col of migratableColumns) {
     if (!existing.includes(col)) {
-      const def = col === 'approved' ? 'INTEGER DEFAULT 0' : 'TEXT';
+      const def = col === 'approved' ? 'INTEGER DEFAULT -1' : 'TEXT';
       db.run(`ALTER TABLE guzanda ADD COLUMN ${col} ${def}`, (alterErr) => {
         if (alterErr) {
           console.error(`Could not add "${col}" column: ${alterErr.message}`);
@@ -390,13 +390,14 @@ app.get('/review/:token', (req, res) => {
     const audioTag = audioSrc
       ? `<audio controls src="${audioSrc}"></audio>`
       : '<p>Audioa ez da grabatu</p>';
-    const statusBadge = row.approved
-      ? '<span class="badge approved">Onartua / Approved</span>'
-      : '<span class="badge pending">Erabakitzeke</span>';
-    const approveForm = row.approved
-      ? ''
-      : `<form method="post" action="/review/${req.params.token}/approve">
-           <button type="submit" class="cta">Onartu</button>
+    const statusBadge = row.approved === 1
+      ? '<span class="badge approved">Onartua</span>'
+      : row.approved === 0
+        ? '<span class="badge rejected">Ezeztatuta</span>'
+        : '<span class="badge pending">Erabakitzeke</span>';
+    const approveForm = `<form method="post" action="/review/${req.params.token}/approve">
+           <button type="submit" class="cta approve">Onartu</button>
+           <button type="submit" class="cta reject" formaction="/review/${req.params.token}/reject">Ezeztatu</button>
          </form>`;
     html = html
       .split('{{id}}').join(row.id)
@@ -421,6 +422,21 @@ app.post('/review/:token/approve', (req, res) => {
         return res.status(500).send(updateErr.message);
       }
       console.log(`Submission #${row.id} approved.`);
+      res.redirect(`/review/${req.params.token}`);
+    });
+  });
+});
+
+app.post('/review/:token/reject', (req, res) => {
+  getSubmissionByToken(req.params.token, (err, row) => {
+    if (err || !row) {
+      return res.status(404).send('Not Found');
+    }
+    db.run(`UPDATE guzanda SET approved = 0 WHERE id = ?`, [row.id], (updateErr) => {
+      if (updateErr) {
+        return res.status(500).send(updateErr.message);
+      }
+      console.log(`Submission #${row.id} rejected.`);
       res.redirect(`/review/${req.params.token}`);
     });
   });
