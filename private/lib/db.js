@@ -61,4 +61,39 @@ function setApproved(id, value, cb) {
   db.run(`UPDATE guzanda SET approved = ? WHERE id = ?`, [value, id], cb);
 }
 
-module.exports = { getSubmissionByToken, insertSubmission, setApproved };
+// Promise-based wrappers for the async route handlers
+function getSubmissionByTokenAsync(token) {
+  return new Promise((resolve, reject) => {
+    getSubmissionByToken(token, (err, row) => {
+      if (err) return reject(err);
+      resolve(row);
+    });
+  });
+}
+
+function insertSubmissionAsync(data) {
+  return new Promise((resolve, reject) => {
+    insertSubmission(data, (err, lastID) => {
+      if (err) return reject(err);
+      resolve(lastID);
+    });
+  });
+}
+
+function setApprovedAsync(id, value) {
+  return new Promise((resolve, reject) => {
+    setApproved(id, value, (err) => {
+      if (err) return reject(err);
+      resolve();
+    });
+  });
+}
+
+module.exports = {
+  getSubmissionByToken,
+  insertSubmission,
+  setApproved,
+  getSubmissionByTokenAsync,
+  insertSubmissionAsync,
+  setApprovedAsync
+};

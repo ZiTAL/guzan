@@ -8,6 +8,7 @@ function env(name, fallback) {
 
 module.exports = {
   port: process.env.PORT || 3000,
+  logRequests: env('GUZAN_LOG_REQUESTS', 'false') === 'true',
   publicUrl: env('GUZAN_PUBLIC_URL', 'https://guzan.eus'),
   instagramUser: env('GUZAN_INSTAGRAM_USER', 'guzanbermeo'),
   instagramCacheTtlMs: parseInt(env('GUZAN_INSTAGRAM_CACHE_TTL', '3600'), 10) * 1000,

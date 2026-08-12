@@ -7,9 +7,9 @@ const fs = require('fs');
 const multer = require('multer');
 
 const config = require('./config');
-const { getSubmissionByToken, insertSubmission, setApproved } = require('./lib/db');
+const { getSubmissionByTokenAsync, insertSubmissionAsync, setApprovedAsync } = require('./lib/db');
 const { escapeHtml, issueCsrfToken, isValidCsrfToken, extractCookie } = require('./lib/security');
-const { renderPage } = require('./lib/templates');
+const { renderPage, fillTemplate, statusBadge, approveForm } = require('./lib/templates');
 const { sendSubmissionEmail } = require('./lib/email');
 const { getInstagramPosts } = require('./lib/instagram');
 
@@ -21,33 +21,22 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// File upload setup
+// File upload setup: store under a random name so user-supplied filenames
+// never end up in the filesystem
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
-    cb(null, Date.now() + '-' + file.originalname);
+    const originalExt = path.extname(file.originalname || '').toLowerCase();
+    const safeExt = /^\.[a-z0-9]+$/.test(originalExt) ? originalExt : '.webm';
+    cb(null, Date.now() + '-' + crypto.randomBytes(8).toString('hex') + safeExt);
   }
 });
 const upload = multer({ storage: storage });
 
 const APPROVED = 1;
 const REJECTED = 0;
-const PENDING = -1;
-
-function statusBadge(approved) {
-  if (approved === APPROVED) return '<span class="badge approved">Onartua</span>';
-  if (approved === REJECTED) return '<span class="badge rejected">Ezeztatuta</span>';
-  return '<span class="badge pending">Erabakitzeke</span>';
-}
-
-function approveForm(token) {
-  return `<form method="post" action="/review/${token}/approve">
-           <button type="submit" class="cta approve">Onartu</button>
-           <button type="submit" class="cta reject" formaction="/review/${token}/reject">Ezeztatu</button>
-         </form>`;
-}
 
 // Routes
 router.get('/', (req, res) => {
@@ -65,35 +54,33 @@ router.get('/guzanda', (req, res) => {
   res.send(html);
 });
 
-router.post('/guzanda', upload.single('audio'), (req, res) => {
-  const { name, contact, description } = req.body;
-  const audio = req.file ? fs.realpathSync(path.join(uploadDir, req.file.filename)) : null;
+router.post('/guzanda', upload.single('audio'), async (req, res) => {
+  try {
+    const { name, contact, description } = req.body;
+    const audio = req.file ? fs.realpathSync(path.join(uploadDir, req.file.filename)) : null;
 
-  // CSRF validation
-  const formToken = req.body && req.body.csrf_token;
-  const cookieToken = extractCookie(req, 'csrf_token');
-  if (!formToken || formToken !== cookieToken || !isValidCsrfToken(formToken)) {
-    return res.status(403).send('Invalid or missing CSRF token. Please refresh the form and try again.');
-  }
-
-  // Basic validation
-  if (!name || !contact) {
-    return res.status(400).send('Name and contact are required.');
-  }
-
-  // Insert into database
-  const reviewToken = crypto.randomBytes(24).toString('hex');
-  insertSubmission({
-    name,
-    contact,
-    description: description || null,
-    audioFile: req.file ? req.file.filename : null,
-    audio,
-    reviewToken
-  }, (err, lastID) => {
-    if (err) {
-      return res.status(500).send(err.message);
+    // CSRF validation
+    const formToken = req.body && req.body.csrf_token;
+    const cookieToken = extractCookie(req, 'csrf_token');
+    if (!formToken || formToken !== cookieToken || !isValidCsrfToken(formToken)) {
+      return res.status(403).send('Invalid or missing CSRF token. Please refresh the form and try again.');
     }
+
+    // Basic validation
+    if (!name || !contact) {
+      return res.status(400).send('Name and contact are required.');
+    }
+
+    // Insert into database
+    const reviewToken = crypto.randomBytes(24).toString('hex');
+    const lastID = await insertSubmissionAsync({
+      name,
+      contact,
+      description: description || null,
+      audioFile: req.file ? req.file.filename : null,
+      audio,
+      reviewToken
+    });
     const submission = {
       id: lastID,
       name,
@@ -104,73 +91,80 @@ router.post('/guzanda', upload.single('audio'), (req, res) => {
     const reviewUrl = `${config.publicUrl}/review/${reviewToken}`;
     sendSubmissionEmail(submission, reviewUrl);
     let html = renderPage(path.join(__dirname, '../public', 'guzanda-success.html'));
-    html = html.split('{{name}}').join(name);
+    html = fillTemplate(html, { name: escapeHtml(name) });
     res.send(html);
-  });
+  } catch (err) {
+    return res.status(500).send(err.message);
+  }
 });
 
 // Review routes: only reachable with the unguessable per-submission token
-router.get('/review/:token', (req, res) => {
-  getSubmissionByToken(req.params.token, (err, row) => {
-    if (err || !row) {
+router.get('/review/:token', async (req, res) => {
+  try {
+    const row = await getSubmissionByTokenAsync(req.params.token);
+    if (!row) {
       return res.status(404).send('Not Found');
     }
-    let html = fs.readFileSync(path.join(__dirname, 'review.html'), 'utf8');
+    const template = fs.readFileSync(path.join(__dirname, 'review.html'), 'utf8');
     const audioSrc = row.audio ? `/review/${req.params.token}/audio` : null;
     const audioTag = audioSrc
       ? `<audio controls src="${audioSrc}"></audio>`
       : '<p>Audioa ez da grabatu</p>';
-    html = html
-      .split('{{id}}').join(row.id)
-      .split('{{name}}').join(escapeHtml(row.name))
-      .split('{{contact}}').join(escapeHtml(row.contact))
-      .split('{{description}}').join(escapeHtml(row.description || '(azalpenik gabe)'))
-      .split('{{created_at}}').join(escapeHtml(row.created_at))
-      .split('{{audio_tag}}').join(audioTag)
-      .split('{{status_badge}}').join(statusBadge(row.approved))
-      .split('{{approve_form}}').join(approveForm(req.params.token));
+    const html = fillTemplate(template, {
+      id: row.id,
+      name: escapeHtml(row.name),
+      contact: escapeHtml(row.contact),
+      description: escapeHtml(row.description || '(azalpenik gabe)'),
+      created_at: escapeHtml(row.created_at),
+      audio_tag: audioTag,
+      status_badge: statusBadge(row.approved),
+      approve_form: approveForm(req.params.token)
+    });
     res.send(html);
-  });
+  } catch (_) {
+    return res.status(404).send('Not Found');
+  }
 });
 
-router.post('/review/:token/approve', (req, res) => {
-  getSubmissionByToken(req.params.token, (err, row) => {
-    if (err || !row) {
+router.post('/review/:token/approve', async (req, res) => {
+  try {
+    const row = await getSubmissionByTokenAsync(req.params.token);
+    if (!row) {
       return res.status(404).send('Not Found');
     }
-    setApproved(row.id, APPROVED, (updateErr) => {
-      if (updateErr) {
-        return res.status(500).send(updateErr.message);
-      }
-      console.log(`Submission #${row.id} approved.`);
-      res.redirect(`/review/${req.params.token}`);
-    });
-  });
+    await setApprovedAsync(row.id, APPROVED);
+    console.log(`Submission #${row.id} approved.`);
+    res.redirect(`/review/${req.params.token}`);
+  } catch (err) {
+    return res.status(500).send(err.message);
+  }
 });
 
-router.post('/review/:token/reject', (req, res) => {
-  getSubmissionByToken(req.params.token, (err, row) => {
-    if (err || !row) {
+router.post('/review/:token/reject', async (req, res) => {
+  try {
+    const row = await getSubmissionByTokenAsync(req.params.token);
+    if (!row) {
       return res.status(404).send('Not Found');
     }
-    setApproved(row.id, REJECTED, (updateErr) => {
-      if (updateErr) {
-        return res.status(500).send(updateErr.message);
-      }
-      console.log(`Submission #${row.id} rejected.`);
-      res.redirect(`/review/${req.params.token}`);
-    });
-  });
+    await setApprovedAsync(row.id, REJECTED);
+    console.log(`Submission #${row.id} rejected.`);
+    res.redirect(`/review/${req.params.token}`);
+  } catch (err) {
+    return res.status(500).send(err.message);
+  }
 });
 
-router.get('/review/:token/audio', (req, res) => {
-  getSubmissionByToken(req.params.token, (err, row) => {
-    if (err || !row || !row.audio || !fs.existsSync(row.audio)) {
+router.get('/review/:token/audio', async (req, res) => {
+  try {
+    const row = await getSubmissionByTokenAsync(req.params.token);
+    if (!row || !row.audio || !fs.existsSync(row.audio)) {
       return res.status(404).send('Not Found');
     }
     res.setHeader('Content-Type', 'audio/webm');
     res.sendFile(row.audio);
-  });
+  } catch (_) {
+    return res.status(404).send('Not Found');
+  }
 });
 
 router.get('/api/instagram', async (req, res) => {

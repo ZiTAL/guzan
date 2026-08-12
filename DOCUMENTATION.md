@@ -31,7 +31,7 @@ Contains sensitive data that should not be directly accessible via the web:
 ### Security Implementation
 - **Path-based separation**: Public assets served from `./public/`, private data stored in `./private/`
 - **Access controls**: Direct attempts to access `.db` or `.md` files return 404 errors
-- **Request filtering**: Blocks common automated tools (curl, wget, scripts) that might indicate scraping attempts
+- **Request logging**: Per-request logging (method, path, user-agent) is disabled by default and can be enabled with `GUZAN_LOG_REQUESTS=true`
 - **Safe file serving**: Uses Node.js path.join to prevent directory traversal vulnerabilities
 
 ### Form Functionality
@@ -45,20 +45,20 @@ The Guzanda form (`guzanda.html`) provides:
 
 ### Technical Implementation
 - **Backend**: Node.js with Express framework, split into small modules:
-  - `private/server.js` – entry point: sets up Express, middleware (body parsing, static files, request logging, `.db`/`.md` blocking), and mounts the route router
+  - `private/server.js` – entry point: sets up Express, middleware (body parsing, static files, optional request logging, `.db`/`.md` blocking), and mounts the route router
   - `private/config.js` – reads all configuration from environment variables (see `docker/.env.example`)
-  - `private/routes.js` – all HTTP routes (home, Guzanda form, review, `/api/instagram`), file upload setup, and status badge/form rendering
-  - `private/lib/db.js` – SQLite connection, table schema/migration, and query helpers
+  - `private/routes.js` – all HTTP routes (home, Guzanda form, review, `/api/instagram`) as `async/await` handlers, and the Multer file upload setup
+  - `private/lib/db.js` – SQLite connection, table schema/migration, and query helpers (plus promise-based variants used by the async route handlers)
   - `private/lib/security.js` – HTML escaping and CSRF token handling
   - `private/lib/email.js` – SMTP notification via Nodemailer
   - `private/lib/instagram.js` – Playwright scraper with result caching
-  - `private/lib/templates.js` – server-side rendering of shared partials (`{{footer}}`)
+  - `private/lib/templates.js` – server-side rendering of shared partials (`{{footer}}`), a generic `fillTemplate()` placeholder substitution helper, and the review page badge/approve-form markup
 - **Database**: SQLite for persistent storage of submissions, including an 'approved' field for moderation with three states: `-1` Erabakitzeke / pending (default), `0` Ezeztatuta / rejected, `1` Onartua / approved. Each submission stores an `audio` field containing the absolute realpath of the uploaded audio file in `private/uploads/`. Each submission also gets a unique `review_token` used to build the unguessable review URL
 - **Email notifications**: Nodemailer sends the moderator an email with a private review link on every submission. SMTP settings are read from environment variables (see `docker/.env.example`)
-- **File handling**: Multer middleware for secure audio uploads; uploaded files are written to `private/uploads/` and their realpath is recorded in the database
+- **File handling**: Multer middleware for secure audio uploads; uploaded files are written to `private/uploads/` under a randomly generated name (never the user-supplied filename) and their realpath is recorded in the database
 - **Frontend**: Semantic HTML5 with CSS3 styling and vanilla JavaScript
 - **Media recording**: Uses the MediaRecorder API for browser-based audio capture
-- **Shared markup**: Repeated page regions (currently the footer) live in a single partial, `private/partials/footer.html`, and are injected server-side. Public HTML pages use a `{{footer}}` placeholder, and the `renderPage()` helper in `private/lib/templates.js` replaces it before sending. This way the footer is edited in exactly one file. `express.static` is configured with `index: false` so the home page is served through the `/` route (which renders the partial) instead of being sent raw from disk
+- **Shared markup**: Repeated page regions (currently the footer) live in a single partial, `private/partials/footer.html`, and are injected server-side. Public HTML pages use a `{{footer}}` placeholder, and the `renderPage()` helper in `private/lib/templates.js` replaces it before sending. This way the footer is edited in exactly one file. The generic `fillTemplate(template, values)` helper performs the same `{{placeholder}}` substitution for arbitrary values and is used by the success and review pages. `express.static` is configured with `index: false` so the home page is served through the `/` route (which renders the partial) instead of being sent raw from disk
 - **Dynamic Instagram posts**: The homepage's "last 3 posts" are served by a server-side proxy at `/api/instagram`. `private/lib/instagram.js` scrapes the profile page of `GUZAN_INSTAGRAM_USER` (default `guzanbermeo`) using a headless Chromium launched via Playwright, caches the result for `GUZAN_INSTAGRAM_CACHE_TTL` seconds (default 1 hour), and returns JSON. The grid is scanned for both photo (`/p/`) and reel (`/reel/`) links so the most recent posts are always picked up regardless of type. Each of the top 3 posts is then opened individually and its real caption is read from the post page's `meta[name=description]`/`og:description` metadata — the profile grid's `img.alt` is only Instagram's auto-generated image description, so it is never used. Cards show image + caption title + link (no separate description paragraph). If the scrape fails (e.g. Instagram serves a login wall), the endpoint returns an empty list and the frontend falls back to the static cards baked into `app.js`. Because Instagram heavily blocks anonymous scraping, the feed may be unreliable; the scrape runs in the container's bundled Chromium (installed at image build time)
 
 ## Data Flow
@@ -150,12 +150,13 @@ SMTP email settings are read from environment variables (see `docker/.env.exampl
 - `GUZAN_MAIL_ENABLED` – set to `false` to disable emails
 - `GUZAN_INSTAGRAM_USER` – Instagram username whose latest posts are scraped for the homepage (default `guzanbermeo`)
 - `GUZAN_INSTAGRAM_CACHE_TTL` – how many seconds to cache scraped posts before re-checking (default `3600`)
+- `GUZAN_LOG_REQUESTS` – set to `true` to log every request (method, path, user-agent); off by default
 
 To configure the deployed container, create `docker/.env` (copy `.env.example`) and restart the container. If SMTP is not configured, submissions still work and emailing is skipped with a log message.
 
 ## Testing
 
-Automated tests are defined in `private/test.js`. Start the server (either `node server.js` from `private/` or the container via `podman compose up -d`), then run `node test.js`. Tests cover:
+Automated tests are defined in `private/test.js`. Start the server (`npm start` from `private/`, i.e. `node server.js`, or the container via `podman compose up -d`), then run `npm test` (i.e. `node test.js`). Tests cover:
 - Home page and form page return 200
 - Direct access to `.db` and `.md` files returns 404
 - Audio upload: posts a multipart form with an audio file to `/guzanda`, verifies the submission succeeds, and (via `private/uploads/`) stores the uploaded file so its realpath can be recorded in the `audio` field of `private/guzanda.db`

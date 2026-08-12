@@ -1,2 +1,2 @@
-- Refactor the code
-- Update documentation
+- [x] Refactor the code
+- [x] Update documentation

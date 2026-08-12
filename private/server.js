@@ -14,11 +14,13 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public'), { index: false }));
 
-// Debug middleware to see what's coming in
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - UA: "${req.headers['user-agent']}"`);
-  next();
-});
+// Optional request logging (opt-in via GUZAN_LOG_REQUESTS=true)
+if (config.logRequests) {
+  app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - UA: "${req.headers['user-agent']}"`);
+    next();
+  });
+}
 
 // Prevent direct access to .db and .md files - fake as 404
 app.use((req, res, next) => {
