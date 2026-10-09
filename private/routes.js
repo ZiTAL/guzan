@@ -33,7 +33,17 @@ const storage = multer.diskStorage({
     cb(null, Date.now() + '-' + crypto.randomBytes(8).toString('hex') + safeExt);
   }
 });
-const upload = multer({ storage: storage });
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 16 * 1024 * 1024,
+    files: 1,
+    fields: 5,
+    parts: 6,
+    fieldNameSize: 100,
+    fieldSize: 10 * 1024
+  }
+});
 
 const APPROVED = 1;
 const REJECTED = 0;
@@ -55,6 +65,7 @@ router.get('/guzanda', (req, res) => {
 });
 
 router.post('/guzanda', upload.single('audio'), async (req, res) => {
+  let submissionSaved = false;
   try {
     const { name, contact, description } = req.body;
     const audio = req.file ? fs.realpathSync(path.join(uploadDir, req.file.filename)) : null;
@@ -63,11 +74,13 @@ router.post('/guzanda', upload.single('audio'), async (req, res) => {
     const formToken = req.body && req.body.csrf_token;
     const cookieToken = extractCookie(req, 'csrf_token');
     if (!formToken || formToken !== cookieToken || !isValidCsrfToken(formToken)) {
+      await removeUploadedFile(req);
       return res.status(403).send('Invalid or missing CSRF token. Please refresh the form and try again.');
     }
 
     // Basic validation
     if (!name || !contact) {
+      await removeUploadedFile(req);
       return res.status(400).send('Name and contact are required.');
     }
 
@@ -81,6 +94,7 @@ router.post('/guzanda', upload.single('audio'), async (req, res) => {
       audio,
       reviewToken
     });
+    submissionSaved = true;
     const submission = {
       id: lastID,
       name,
@@ -94,9 +108,20 @@ router.post('/guzanda', upload.single('audio'), async (req, res) => {
     html = fillTemplate(html, { name: escapeHtml(name) });
     res.send(html);
   } catch (err) {
-    return res.status(500).send(err.message);
+    if (!submissionSaved) await removeUploadedFile(req);
+    console.error('[guzanda] Submission failed:', err.message);
+    return res.status(500).send('The submission could not be saved. Please try again.');
   }
 });
+
+async function removeUploadedFile(req) {
+  if (!req.file) return;
+  try {
+    await fs.promises.unlink(req.file.path);
+  } catch (err) {
+    if (err.code !== 'ENOENT') console.error('[guzanda] Could not remove rejected upload:', err.message);
+  }
+}
 
 // Review routes: only reachable with the unguessable per-submission token
 router.get('/review/:token', async (req, res) => {

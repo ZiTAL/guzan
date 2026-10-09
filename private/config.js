@@ -1,5 +1,7 @@
 'use strict';
 
+const path = require('path');
+
 function env(name, fallback) {
   const value = process.env[name];
   if (value == null || value.startsWith('${')) return fallback;
@@ -8,6 +10,8 @@ function env(name, fallback) {
 
 module.exports = {
   port: process.env.PORT || 3000,
+  trustProxy: env('GUZAN_TRUST_PROXY', 'loopback').split(',').map((value) => value.trim()).filter(Boolean),
+  ipBlacklistFile: env('GUZAN_IP_BLACKLIST_FILE', path.join(__dirname, 'blacklist.json')),
   logRequests: env('GUZAN_LOG_REQUESTS', 'false') === 'true',
   publicUrl: env('GUZAN_PUBLIC_URL', 'https://guzan.eus'),
   instagramUser: env('GUZAN_INSTAGRAM_USER', 'guzanbermeo'),

@@ -8,13 +8,15 @@ services:
     container_name: guzanda
     restart: unless-stopped
     ports:
-      - "8005:3000"
+      - "${GUZAN_BIND_ADDRESS:-127.0.0.1}:8005:3000"
     volumes:
       - ../private/guzanda.db:/app/private/guzanda.db
       - ../private/uploads:/app/private/uploads
+      - ../private:/app/private-host:ro
       - ../public:/app/public
 
     env_file:
       - .env
     environment:
       - TZ=Europe/Madrid
+      - GUZAN_IP_BLACKLIST_FILE=/app/private-host/blacklist.json

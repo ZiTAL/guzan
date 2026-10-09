@@ -34,22 +34,61 @@ function toPost(post, i) {
   const title = truncate(stripHtml(post.title) || ("Instagram posta " + (i + 1)), 100);
   return {
     title,
-    link: post.link || INSTAGRAM_PROFILE_URL,
-    thumbnail: post.thumbnail || "./assets/images/instagram-" + (i + 1) + ".jpg"
+    link: safeInstagramLink(post.link),
+    thumbnail: safeImageUrl(post.thumbnail, "./assets/images/instagram-" + (i + 1) + ".jpg")
   };
+}
+
+function safeInstagramLink(value) {
+  try {
+    const url = new URL(value || INSTAGRAM_PROFILE_URL, window.location.href);
+    if (url.protocol === "https:" && /(^|\.)instagram\.com$/i.test(url.hostname)) {
+      return url.href;
+    }
+  } catch (_) {
+    // Use the known-good profile URL below.
+  }
+  return INSTAGRAM_PROFILE_URL;
+}
+
+function safeImageUrl(value, fallback) {
+  try {
+    const url = new URL(value || fallback, window.location.href);
+    if (url.protocol === "https:" || url.origin === window.location.origin) {
+      return url.href;
+    }
+  } catch (_) {
+    // Use the local image below.
+  }
+  return fallback;
 }
 
 function renderPosts(posts) {
   const target = document.getElementById("instagram-posts");
   if (!target) return;
 
-  target.innerHTML = posts.map((post, i) =>
-    '<article class="card">' +
-      '<img src="' + post.thumbnail + '" alt="Instagram posta ' + (i + 1) + '">' +
-      "<h3>" + post.title + "</h3>" +
-      '<a href="' + post.link + '" target="_blank" rel="noopener">Posta ikusi</a>' +
-    "</article>"
-  ).join("");
+  const fragment = document.createDocumentFragment();
+  posts.forEach((post, i) => {
+    const card = document.createElement("article");
+    card.className = "card";
+
+    const image = document.createElement("img");
+    image.src = safeImageUrl(post.thumbnail, "./assets/images/instagram-" + (i + 1) + ".jpg");
+    image.alt = "Instagram posta " + (i + 1);
+
+    const title = document.createElement("h3");
+    title.textContent = post.title;
+
+    const link = document.createElement("a");
+    link.href = safeInstagramLink(post.link);
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "Posta ikusi";
+
+    card.append(image, title, link);
+    fragment.append(card);
+  });
+  target.replaceChildren(fragment);
 }
 
 function renderError() {

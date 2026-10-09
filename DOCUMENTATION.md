@@ -31,6 +31,9 @@ Contains sensitive data that should not be directly accessible via the web:
 ### Security Implementation
 - **Path-based separation**: Public assets served from `./public/`, private data stored in `./private/`
 - **Access controls**: Direct attempts to access `.db` or `.md` files return 404 errors
+- **Hot IP blacklist**: `private/blacklist.json` is checked by Express before static files and routes; edits take effect within about one second without reloading Caddy or restarting the app
+- **Trusted proxy IPs**: Express only uses `X-Forwarded-For` from addresses configured in `GUZAN_TRUST_PROXY` (default `loopback`)
+- **Upload limits**: Audio uploads are limited to 16 MB, one file, and a small number of bounded form fields; rejected uploads are removed
 - **Request logging**: Per-request logging (method, path, user-agent) is disabled by default and can be enabled with `GUZAN_LOG_REQUESTS=true`
 - **Safe file serving**: Uses Node.js path.join to prevent directory traversal vulnerabilities
 
@@ -101,12 +104,30 @@ The Docker configuration lives in `docker/`:
 - `build.sh` - convenience script that runs `podman compose down && podman compose up -d --build`
 
 The container:
-- Exposes the app on port 3000, published on the host as port 8005 (`8005:3000`)
+- Exposes the app on port 3000, published on host loopback as port 8005 by default (`127.0.0.1:8005:3000`) so a same-host Caddy proxy can reach it without exposing the backend port publicly. `GUZAN_BIND_ADDRESS` changes the host bind address when needed by a different proxy topology.
 - Bind-mounts `private/guzanda.db`, `private/uploads/`, and `public/` from the host, so submissions, audio files, and frontend assets persist on the host even when the container is rebuilt
+- Bind-mounts `private/` read-only at `/app/private-host` so edits and atomic replacements of the blacklist file are picked up live
 - Runs on a `node:24-trixie-slim` base image (chosen so Playwright can install Chromium with its system dependencies)
 - Restarts automatically via `restart: unless-stopped` (and on boot when the container service is enabled)
 
 > **Note on live vs. baked-in changes:** `public/` is bind-mounted, so edits to HTML, CSS, and client-side JS are picked up immediately (no rebuild needed). `private/` is baked into the image at build time, so changes to `server.js`, `config.js`, `routes.js`, the `lib/` folder, the `partials/` folder, `review.html`, or `package.json` require rebuilding the image and recreating the container.
+
+### Blocking IP addresses
+
+Add exact IPv4 or IPv6 addresses to `private/blacklist.json`:
+
+```json
+[
+  "203.0.113.42",
+  "2001:db8::42"
+]
+```
+
+Save the file; the server polls it once per second and blocks listed addresses with HTTP 403. Removing an address unblocks it the same way. The app keeps the last valid list if the JSON is malformed or contains an invalid IP. This is an application-level block: it rejects HTTP requests after they reach Express.
+
+When Caddy runs on the same host, the default `GUZAN_TRUST_PROXY=loopback` lets Express use Caddy's forwarded client IP while ignoring forwarded headers from direct internet requests. If Caddy runs in a container, set `GUZAN_TRUST_PROXY` in `docker/.env` to Caddy's stable IP or its Docker network CIDR, then recreate the app container once. Only trust the proxy address range that actually connects to Guzan.
+
+The default published port assumes Caddy runs on the host. If Caddy is containerized, connect it and Guzan through a private shared container network instead of exposing the backend port to every host interface.
 
 ### Running
 
@@ -151,6 +172,8 @@ SMTP email settings are read from environment variables (see `docker/.env.exampl
 - `GUZAN_INSTAGRAM_USER` – Instagram username whose latest posts are scraped for the homepage (default `guzanbermeo`)
 - `GUZAN_INSTAGRAM_CACHE_TTL` – how many seconds to cache scraped posts before re-checking (default `3600`)
 - `GUZAN_LOG_REQUESTS` – set to `true` to log every request (method, path, user-agent); off by default
+- `GUZAN_TRUST_PROXY` – comma-separated trusted reverse proxy addresses/CIDRs for reading `X-Forwarded-For` (default `loopback`)
+- `GUZAN_BIND_ADDRESS` – host address for port 8005 (default `127.0.0.1`)
 
 To configure the deployed container, create `docker/.env` (copy `.env.example`) and restart the container. If SMTP is not configured, submissions still work and emailing is skipped with a log message.
 
