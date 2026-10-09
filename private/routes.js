@@ -38,8 +38,8 @@ const upload = multer({
   limits: {
     fileSize: 16 * 1024 * 1024,
     files: 1,
-    fields: 5,
-    parts: 6,
+    fields: 6,
+    parts: 7,
     fieldNameSize: 100,
     fieldSize: 10 * 1024
   }
@@ -90,6 +90,7 @@ router.post('/guzanda', upload.single('audio'), async (req, res) => {
       name,
       contact,
       description: description || null,
+      contactConsent: req.body.contact_consent === '1',
       audioFile: req.file ? req.file.filename : null,
       audio,
       reviewToken
@@ -100,6 +101,7 @@ router.post('/guzanda', upload.single('audio'), async (req, res) => {
       name,
       contact,
       description: description || null,
+      contactConsent: req.body.contact_consent === '1',
       audio: req.file ? req.file.filename : null
     };
     const reviewUrl = `${config.publicUrl}/review/${reviewToken}`;
@@ -139,6 +141,7 @@ router.get('/review/:token', async (req, res) => {
       id: row.id,
       name: escapeHtml(row.name),
       contact: escapeHtml(row.contact),
+      contact_consent: Number(row.KONTAKTU_BAIMENA) === 1 ? 'Baimena emanda' : 'Baimenik gabe',
       description: escapeHtml(row.description || '(azalpenik gabe)'),
       created_at: escapeHtml(row.created_at),
       audio_tag: audioTag,

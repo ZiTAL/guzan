@@ -334,6 +334,22 @@ h1 {
   border-radius: 4px;
 }
 
+.contact-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+}
+
+.contact-consent input {
+  flex: 0 0 auto;
+  margin-top: 0.25rem;
+}
+
+.contact-consent label {
+  cursor: pointer;
+}
+
 .form-ask {
   margin: 0 0 1.5rem;
   font-family: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;

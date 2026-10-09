@@ -29,6 +29,7 @@ function sendSubmissionEmail(submission, reviewUrl) {
     <ul>
       <li><strong>Izen Abizenak:</strong> ${escapeHtml(submission.name)}</li>
       <li><strong>Kontaktua:</strong> ${escapeHtml(submission.contact)}</li>
+      <li><strong>Harremanetarako baimena:</strong> ${submission.contactConsent ? 'Bai' : 'Ez'}</li>
       <li><strong>Deskribapena:</strong><br>${escapeHtml(description)}</li>
       ${submission.audio ? '<li><strong>Audio:</strong> egiaztatu orrian</li>' : ''}
     </ul>
@@ -38,6 +39,7 @@ function sendSubmissionEmail(submission, reviewUrl) {
     `Guzanda - Bidalketa berria #${submission.id}`,
     `Izen Abizenak: ${submission.name}`,
     `Kontaktua: ${submission.contact}`,
+    `Harremanetarako baimena: ${submission.contactConsent ? 'Bai' : 'Ez'}`,
     `Deskribapena: ${description}`,
     submission.audio ? 'Audioa: errepaso orrian entzun daiteke' : '',
     `Errepasatu / Review: ${reviewUrl}`
